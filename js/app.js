@@ -28,8 +28,8 @@
 
   /* ---------------- DOM ---------------- */
   let canvas, ctx, els;
-  const CELL = 56;        // 每路像素
-  const MARGIN = 42;      // 边距
+  const CELL = global.GoRender.CELL;     // 每路像素
+  const MARGIN = global.GoRender.MARGIN; // 边距
 
   function $(sel) {
     return document.querySelector(sel);
@@ -245,146 +245,30 @@
     return [x, y];
   }
 
-  /* ---------------- 渲染 ---------------- */
-  function starPoints(n) {
-    if (n === 9) return [[2, 2], [6, 2], [4, 4], [2, 6], [6, 6]];
-    if (n === 13) return [[3, 3], [9, 3], [6, 6], [3, 9], [9, 9]];
-    if (n === 19)
-      return [
-        [3, 3], [9, 3], [15, 3],
-        [3, 9], [9, 9], [15, 9],
-        [3, 15], [9, 15], [15, 15],
-      ];
-    return [];
-  }
-
+  /* ---------------- 渲染（委托给 GoRender） ---------------- */
   function render() {
     const b = state.board;
-    const n = b.size;
-    // 木纹背景
-    ctx.fillStyle = '#e9b96e';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const les = state.lesson;
+    const opts = {};
 
-    // 网格线
-    ctx.strokeStyle = '#5a3a1a';
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < n; i++) {
-      const [x0, y0] = boardToPixel(0, i);
-      const [x1] = boardToPixel(n - 1, i);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); ctx.stroke();
-      const [vx0, vy0] = boardToPixel(i, 0);
-      const [, vy1] = boardToPixel(i, n - 1);
-      ctx.beginPath(); ctx.moveTo(vx0, vy0); ctx.lineTo(vx0, vy1); ctx.stroke();
-    }
-
-    // 星位
-    ctx.fillStyle = '#5a3a1a';
-    for (const [sx, sy] of starPoints(n)) {
-      const [px, py] = boardToPixel(sx, sy);
-      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // 坐标
-    ctx.fillStyle = '#6b4a26';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const letters = 'ABCDEFGHJKLMNOPQRST';
-    for (let i = 0; i < n; i++) {
-      const [px] = boardToPixel(i, 0);
-      ctx.fillText(letters[i], px, 16);
-      ctx.fillText(letters[i], px, canvas.height - 16);
-      const [, py] = boardToPixel(0, i);
-      ctx.fillText(n - i, 16, py);
-      ctx.fillText(n - i, canvas.width - 16, py);
-    }
-
-    // 教学高亮：气 / 推荐点
-    drawHighlights();
-
-    // 棋子
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const v = b.get(x, y);
-        if (v !== EMPTY) drawStone(x, y, v);
+    // 教学高亮：气 / 征子推荐点
+    if (state.mode === 'lesson' && les && les.options) {
+      if (les.options.showLiberties) opts.showLiberties = les.options.showLiberties;
+      if (les.goal.type === 'ladder' && les.goal.recommend) {
+        opts.ladderRecommend = les.goal.recommend[state.ladderStep];
       }
-    }
-
-    // 最后一手标记
-    if (b.lastMove) {
-      const [px, py] = boardToPixel(b.lastMove.x, b.lastMove.y);
-      ctx.strokeStyle = b.lastMove.color === BLACK ? '#fff' : '#000';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(px, py, CELL * 0.18, 0, Math.PI * 2); ctx.stroke();
     }
 
     // 落子预览
     if (state.hoverPt && !state.busy && canPlayNow()) {
       const [hx, hy] = state.hoverPt;
       if (b.get(hx, hy) === EMPTY) {
-        const color = currentHumanColor();
-        const [px, py] = boardToPixel(hx, hy);
-        ctx.globalAlpha = 0.4;
-        drawStoneAt(px, py, color);
-        ctx.globalAlpha = 1;
+        opts.hover = { x: hx, y: hy, color: currentHumanColor() };
       }
     }
 
+    global.GoRender.draw(ctx, b, opts);
     updateTurnDot();
-  }
-
-  function drawStone(x, y, color) {
-    const [px, py] = boardToPixel(x, y);
-    drawStoneAt(px, py, color);
-  }
-  function drawStoneAt(px, py, color) {
-    const r = CELL * 0.46;
-    const grad = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
-    if (color === BLACK) {
-      grad.addColorStop(0, '#555'); grad.addColorStop(1, '#0a0a0a');
-    } else {
-      grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#cfcfcf');
-    }
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-  }
-
-  function drawHighlights() {
-    const les = state.lesson;
-    if (state.mode !== 'lesson' || !les || !les.options) return;
-    const b = state.board;
-
-    // 高亮气位
-    if (les.options.showLiberties) {
-      for (const [gx, gy] of les.options.showLiberties) {
-        if (b.get(gx, gy) === EMPTY) continue;
-        const libs = b.group(gx, gy).liberties;
-        for (const key of libs) {
-          const [lx, ly] = key.split(',').map(Number);
-          const [px, py] = boardToPixel(lx, ly);
-          ctx.fillStyle = 'rgba(60,160,90,0.35)';
-          ctx.beginPath(); ctx.arc(px, py, CELL * 0.28, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
-
-    // 征子：高亮当前推荐点
-    if (les.goal.type === 'ladder' && les.goal.recommend) {
-      const rec = les.goal.recommend[state.ladderStep];
-      if (rec && b.get(rec[0], rec[1]) === EMPTY) {
-        markPoint(rec, 'rgba(220,70,70,0.85)');
-      }
-    }
-  }
-
-  function markPoint([x, y], color) {
-    const [px, py] = boardToPixel(x, y);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(px, py, CELL * 0.34, 0, Math.PI * 2); ctx.stroke();
   }
 
   function updateTurnDot() {

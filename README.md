@@ -69,12 +69,26 @@ go_game/
 ├── js/
 │   ├── engine.js       # 围棋规则引擎（气/提子/禁着点/打劫/数子），与界面解耦
 │   ├── ai.js           # 教学用启发式 AI（提子/逃子/打吃/行棋）
+│   ├── render.js       # 棋盘绘制模块（浏览器与截图脚本共用同一套绘制逻辑）
 │   ├── lessons.js      # 课程数据（坐标均经验证）
-│   └── app.js          # 界面与教学流程控制（Canvas 渲染、目标判定、对弈）
+│   └── app.js          # 界面与教学流程控制（交互、目标判定、对弈）
 ├── tests/
 │   └── verify.js       # 引擎与课程的离线验证脚本
+├── docs/
+│   └── screenshots/    # 由真实渲染模块生成的界面截图
 └── README.md
 ```
+
+## 📸 界面预览
+
+下列截图均由 `js/render.js`（与浏览器运行时完全相同的绘制代码）离线渲染生成：
+
+| | |
+|---|---|
+| ![气与打吃](docs/screenshots/01_liberties.png) | ![双打吃](docs/screenshots/03_double_atari.png) |
+| 高亮“气”与落子预览 | 双打吃：一子同时打吃两块 |
+| ![征子](docs/screenshots/04_ladder.png) | ![实战](docs/screenshots/06_midgame_9x9.png) |
+| 征子进行中（红圈为推荐落点） | AI 对弈中局 |
 
 ## 🏗️ 设计要点
 
