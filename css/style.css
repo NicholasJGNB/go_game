@@ -1,0 +1,236 @@
+/* ===== 围棋教室 样式 ===== */
+:root {
+  --bg: #f4f1ea;
+  --panel: #ffffff;
+  --ink: #2a2622;
+  --muted: #7d756b;
+  --accent: #c0392b;
+  --accent2: #2d7a4a;
+  --board: #e9b96e;
+  --line: #d9d2c5;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+/* ---- 顶栏 ---- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 26px;
+  background: linear-gradient(135deg, #3a2c1c, #5a4226);
+  color: #fdf6e9;
+  box-shadow: var(--shadow);
+}
+.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand .logo { font-size: 26px; }
+.brand h1 { margin: 0; font-size: 22px; letter-spacing: 2px; }
+.tagline { color: #e8d4b0; font-size: 13px; }
+
+/* ---- 布局 ---- */
+.layout {
+  display: grid;
+  grid-template-columns: 250px minmax(320px, 1fr) 360px;
+  gap: 20px;
+  padding: 20px;
+  max-width: 1320px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+/* ---- 侧栏课程 ---- */
+.sidebar {
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px 12px;
+  box-shadow: var(--shadow);
+  max-height: 78vh;
+  overflow-y: auto;
+}
+.sidebar-title {
+  font-size: 15px;
+  margin: 4px 8px 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+.chapter-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 14px 8px 6px;
+  letter-spacing: 0.5px;
+}
+.lesson-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink);
+  transition: background 0.15s;
+}
+.lesson-item:hover { background: #f3eee3; }
+.lesson-item.active { background: #fbeae6; font-weight: 600; }
+.lesson-item .dot {
+  flex: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #e6ded0;
+  color: var(--muted);
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+}
+.lesson-item .dot.done { background: var(--accent2); color: #fff; }
+.lesson-item .lname { flex: 1; }
+
+/* ---- 棋盘区 ---- */
+.board-area { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.board-wrap {
+  background: var(--board);
+  padding: 6px;
+  border-radius: 10px;
+  box-shadow: var(--shadow), inset 0 0 0 2px rgba(90, 58, 26, 0.25);
+}
+#board { display: block; border-radius: 6px; cursor: pointer; }
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 620px;
+}
+.turn-label { font-size: 13px; color: var(--muted); }
+.turn-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.3);
+}
+.turn-dot.black { background: #111; }
+.turn-dot.white { background: #fff; }
+.spacer { flex: 1; }
+
+/* ---- 讲解面板 ---- */
+.panel {
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: var(--shadow);
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+.panel-chapter { font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: 0.5px; }
+.panel-title { margin: 4px 0 12px; font-size: 21px; }
+.panel-intro { font-size: 15px; color: #3c362f; }
+.panel-intro strong { color: var(--accent); }
+
+.score-box {
+  margin: 14px 0;
+  padding: 12px 14px;
+  background: #f7f3ea;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.score-row { display: flex; align-items: center; gap: 8px; }
+.chip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.3); }
+.chip.black { background: #111; }
+.chip.white { background: #fff; }
+
+.panel-status {
+  margin: 14px 0 0;
+  min-height: 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.panel-status.success { color: var(--accent2); }
+.panel-status.warn { color: var(--accent); }
+
+.hint-box {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fff7e6;
+  border-left: 4px solid #f0b429;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.sandbox-controls {
+  margin-top: 16px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.sandbox-controls select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+.ai-label { display: flex; align-items: center; gap: 6px; }
+
+/* ---- 按钮 ---- */
+.panel-actions {
+  margin-top: auto;
+  padding-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.nav-btns { display: flex; gap: 8px; }
+.btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+.btn:hover:not(:disabled) { background: #f3eee3; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover:not(:disabled) { background: #a93226; }
+.btn.ghost { background: transparent; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+.btn.ghost.active { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+.btn.pulse { animation: pulse 0.8s ease-in-out 3; }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(192,57,43,0.18); }
+}
+
+/* ---- 页脚 ---- */
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 18px;
+}
+
+.hidden { display: none !important; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { max-height: none; order: 3; }
+  .panel { order: 2; }
+  .board-area { order: 1; }
+}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>围棋教室 · 系统性围棋教学</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⛩️</span>
+      <h1>围棋教室</h1>
+      <span class="tagline">从零开始的系统性围棋教学</span>
+    </div>
+    <button id="btn-sandbox" class="btn ghost">🎯 自由对弈</button>
+  </header>
+
+  <div class="layout">
+    <!-- 左侧：课程目录 -->
+    <aside class="sidebar">
+      <h2 class="sidebar-title">课程目录</h2>
+      <div id="lesson-list" class="lesson-list"></div>
+    </aside>
+
+    <!-- 中间：棋盘 -->
+    <main class="board-area">
+      <div class="board-wrap">
+        <canvas id="board" width="600" height="600"></canvas>
+      </div>
+      <div class="board-toolbar">
+        <span class="turn-label">当前行棋：</span>
+        <span id="turn-dot" class="turn-dot black"></span>
+        <div class="spacer"></div>
+        <button id="btn-pass" class="btn small hidden">停一手</button>
+        <button id="btn-undo" class="btn small hidden">悔棋</button>
+        <button id="btn-reset" class="btn small">重来本题</button>
+      </div>
+    </main>
+
+    <!-- 右侧：讲解面板 -->
+    <section class="panel">
+      <div class="panel-chapter" id="panel-chapter"></div>
+      <h2 class="panel-title" id="panel-title"></h2>
+      <div class="panel-intro" id="panel-intro"></div>
+
+      <div id="score-box" class="score-box hidden"></div>
+
+      <div class="panel-status" id="panel-status"></div>
+      <div id="hint-box" class="hint-box hidden"></div>
+
+      <div id="sandbox-controls" class="sandbox-controls hidden">
+        <label>棋盘：
+          <select id="size-select">
+            <option value="9" selected>9 路（入门）</option>
+            <option value="13">13 路</option>
+            <option value="19">19 路（正式）</option>
+          </select>
+        </label>
+        <label class="ai-label">
+          <input type="checkbox" id="ai-toggle" checked /> 对战 AI
+        </label>
+      </div>
+
+      <div class="panel-actions">
+        <button id="btn-hint" class="btn ghost">💡 提示</button>
+        <div class="nav-btns">
+          <button id="btn-prev" class="btn">‹ 上一课</button>
+          <button id="btn-next" class="btn primary">下一课 ›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    纯前端实现 · 完整围棋规则引擎（气 / 提子 / 禁着点 / 打劫）· 进度自动保存在本地
+  </footer>
+
+  <script src="js/engine.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/lessons.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
