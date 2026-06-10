@@ -80,11 +80,13 @@ ck('c2l1 (5,4) 打吃成立', (() => { const c = b.clone(); c.play(5, 4, BLACK);
 b = setupBoard(les('c2l2')); b.play(4, 4, BLACK);
 ck('c2l2 双打吃', b.countLiberties(3, 4) === 1 && b.countLiberties(5, 4) === 1);
 
-// 征子（跟随推荐序列，白棋按 escapeOnly 自动逃）
+// 征子（引擎动态求解推荐点，白棋按 escapeOnly 自动逃）
 b = setupBoard(les('c2l3'));
 let captured = false;
-for (const rec of les('c2l3').goal.recommend) {
-  b.play(rec[0], rec[1], BLACK);
+for (let i = 0; i < 30; i++) {
+  const m = AI.ladderMove(b, [2, 2]);
+  if (!m) break;
+  b.play(m[0], m[1], BLACK);
   if (b.get(2, 2) !== WHITE) { captured = true; break; }
   if (b.countLiberties(2, 2) === 1) {
     const mv = AI.chooseMove(b, WHITE, { escapeOnly: true });
@@ -92,7 +94,12 @@ for (const rec of les('c2l3').goal.recommend) {
   }
   if (b.get(2, 2) !== WHITE) { captured = true; break; }
 }
-ck('c2l3 征子吃掉白棋', captured);
+ck('c2l3 征子动态求解并吃掉白棋', captured);
+
+// 征子：第一手必须是 (1,2)——往黑棋墙的方向打，(3,2) 是错误方向
+b = setupBoard(les('c2l3'));
+const firstLadder = AI.ladderMove(b, [2, 2]);
+ck('c2l3 首手推荐为正确方向 (1,2)', firstLadder && firstLadder[0] === 1 && firstLadder[1] === 2);
 
 // 枷
 b = setupBoard(les('c2l4'));
@@ -116,6 +123,29 @@ ck('c3l2 要害 (3,0) 合法', b.isLegal(3, 0, BLACK));
 // 做活直三
 b = setupBoard(les('c3l3')); b.play(3, 0, BLACK);
 ck('c3l3 中心做两眼', groupEyes(b, 2, 1) >= 2);
+
+console.log('\n== AI 与引擎增强 ==');
+// AI 不填自己的真眼
+b = mk(9, [[0, 1], [2, 1], [1, 0], [1, 2], [4, 1], [3, 0], [3, 2]], []);
+// 眼位 (1,1) 与 (3,1)：四周皆黑
+ck('isOwnEye 识别真眼', AI.isOwnEye(b, 1, 1, BLACK) && AI.isOwnEye(b, 3, 1, BLACK));
+{
+  const mv = AI.chooseMove(b, BLACK, {});
+  const fillsEye = !mv.pass && ((mv.x === 1 && mv.y === 1) || (mv.x === 3 && mv.y === 1));
+  ck('AI 不自填真眼', !fillsEye);
+}
+
+// undo 保留关卡预设棋子
+{
+  const b2 = mk(9, [[3, 4]], [[4, 4]]);
+  b2.markSetup();
+  b2.play(5, 4, BLACK);
+  b2.play(6, 6, WHITE);
+  b2.undo();
+  ck('undo 撤销最后一手且保留预设棋子',
+    b2.get(6, 6) === EMPTY && b2.get(5, 4) === BLACK &&
+    b2.get(3, 4) === BLACK && b2.get(4, 4) === WHITE);
+}
 
 // 所有关卡布局合法
 let setupOk = true;

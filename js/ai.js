@@ -60,6 +60,51 @@
   }
 
   /*
+   * 判断 (x,y) 是否为 color 的真眼（四周皆己方、斜角无敌子）。
+   * 用于阻止 AI 在终局填掉自己的眼自杀。
+   */
+  function isOwnEye(board, x, y, color) {
+    for (const [nx, ny] of board.neighbors(x, y)) {
+      if (board.get(nx, ny) !== color) return false;
+    }
+    const enemy = opposite(color);
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const ax = x + dx;
+      const ay = y + dy;
+      if (board.inBounds(ax, ay) && board.get(ax, ay) === enemy) return false;
+    }
+    return true;
+  }
+
+  /*
+   * 征子求解：返回能把 target 处的棋块一路征吃的下一手，无解返回 null。
+   * 每一手都必须保持打吃；对方被迫延气后若达到 3 口气即视为逃出。
+   */
+  function ladderMove(board, target, depth) {
+    if (depth == null) depth = 40;
+    const [tx, ty] = target;
+    const wColor = board.get(tx, ty);
+    if (wColor === EMPTY) return null;
+    const bColor = opposite(wColor);
+    const libs = Array.from(board.group(tx, ty).liberties).map((s) => s.split(',').map(Number));
+    if (libs.length > 2) return null;
+    for (const [lx, ly] of libs) {
+      if (!board.isLegal(lx, ly, bColor)) continue;
+      const c = board.clone();
+      c.play(lx, ly, bColor);
+      if (c.get(tx, ty) === EMPTY) return [lx, ly];           // 直接提
+      if (c.countLiberties(tx, ty) !== 1) continue;           // 必须保持打吃
+      const esc = Array.from(c.group(tx, ty).liberties)[0].split(',').map(Number);
+      if (!c.isLegal(esc[0], esc[1], wColor)) return [lx, ly]; // 无处可逃
+      c.play(esc[0], esc[1], wColor);
+      if (c.countLiberties(tx, ty) >= 3) continue;            // 这条路对方逃出
+      if (depth <= 0) continue;
+      if (ladderMove(c, target, depth - 1)) return [lx, ly];
+    }
+    return null;
+  }
+
+  /*
    * 主决策函数。opts 可定制行为，用于不同关卡：
    *   opts.escapeOnly  —— 仅在被打吃时逃跑（用于征子防守方）
    *   opts.passIfIdle  —— 没有有价值的着手时停一手
@@ -115,6 +160,7 @@
     // 4) 普通行棋：偏好靠近已有棋子、避免自填一口气的点
     const scored = [];
     for (const [x, y] of legal) {
+      if (isOwnEye(board, x, y, color)) continue; // 绝不自填真眼
       // 避免自杀式自我减气：落子后自身气数太少则降权
       const clone = board.clone();
       clone.play(x, y, color);
@@ -145,5 +191,5 @@
     return { x: scored[0].x, y: scored[0].y };
   }
 
-  global.GoAI = { chooseMove, findAtariMoves, findAtariEscapes };
+  global.GoAI = { chooseMove, findAtariMoves, findAtariEscapes, ladderMove, isOwnEye };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,13 +1,15 @@
 /*
  * app.js —— 界面与教学流程控制
- * 负责：Canvas 棋盘绘制、交互落子、课程目标判定、AI 应手、自由对弈与数子。
+ * 负责：交互落子、课程目标判定、AI 应手、自由对弈与数子。
+ * 棋盘绘制委托给 render.js（GoRender），规则委托给 engine.js（Go）。
  */
 
 (function (global) {
   'use strict';
 
-  const { GoBoard, BLACK, WHITE, EMPTY } = global.Go;
+  const { GoBoard, BLACK, WHITE, EMPTY, opposite } = global.Go;
   const AI = global.GoAI;
+  const R = global.GoRender;
   const LESSONS = global.GoLessons;
 
   /* ---------------- 状态 ---------------- */
@@ -18,18 +20,19 @@
     placedThisLesson: 0,
     completed: loadProgress(),
     busy: false,           // AI 思考 / 动画期间锁定输入
+    lessonDone: false,
     hoverPt: null,
-    ladderStep: 0,
+    ladderHint: null,      // 征子关：引擎实时求解的下一手
+    answerPt: null,        // 点提示到最后一条时，在棋盘上标出的答案点
     consecutivePasses: 0,
     mode: 'lesson',        // 'lesson' | 'sandbox'
     sandboxVsAI: true,
     humanColor: BLACK,
+    logicalSize: 0,        // 当前棋盘的逻辑像素边长（用于坐标换算）
   };
 
   /* ---------------- DOM ---------------- */
   let canvas, ctx, els;
-  const CELL = global.GoRender.CELL;     // 每路像素
-  const MARGIN = global.GoRender.MARGIN; // 边距
 
   function $(sel) {
     return document.querySelector(sel);
@@ -50,6 +53,68 @@
     }
   }
 
+  /* ---------------- 音效 ---------------- */
+  let audioCtx = null;
+  let soundOn = localStorage.getItem('go_sound') !== 'off';
+
+  function sound(type) {
+    if (!soundOn) return;
+    try {
+      audioCtx = audioCtx || new (global.AudioContext || global.webkitAudioContext)();
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      if (type === 'capture') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(660, t);
+        osc.frequency.exponentialRampToValueAtTime(990, t + 0.1);
+        gain.gain.setValueAtTime(0.1, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        osc.start(t); osc.stop(t + 0.18);
+      } else {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(340, t);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+        osc.start(t); osc.stop(t + 0.07);
+      }
+    } catch (e) {
+      /* 音频不可用则静默 */
+    }
+  }
+
+  /* 落子（带音效与提子动画）。返回 play() 的结果 */
+  function playWithFx(x, y, color) {
+    const res = state.board.play(x, y, color);
+    if (!res) return res;
+    if (res.captured && res.captured.length) {
+      sound('capture');
+      animateCaptures(res.captured, opposite(color));
+    } else {
+      sound('place');
+    }
+    return res;
+  }
+
+  /* 被提的棋子淡出消失 */
+  function animateCaptures(stones, color) {
+    const start = performance.now();
+    const dur = 300;
+    function frame(now) {
+      const t = Math.min(1, (now - start) / dur);
+      render();
+      for (const [sx, sy] of stones) {
+        const [px, py] = R.boardToPixel(sx, sy);
+        R.drawStoneAt(ctx, px, py, color, 1 - t);
+      }
+      if (t < 1) requestAnimationFrame(frame);
+      else render();
+    }
+    requestAnimationFrame(frame);
+  }
+
   /* ---------------- 初始化 ---------------- */
   function init() {
     canvas = $('#board');
@@ -67,12 +132,14 @@
       nextBtn: $('#btn-next'),
       passBtn: $('#btn-pass'),
       undoBtn: $('#btn-undo'),
+      soundBtn: $('#btn-sound'),
       score: $('#score-box'),
       sandboxBtn: $('#btn-sandbox'),
       sizeSel: $('#size-select'),
       aiToggle: $('#ai-toggle'),
       sandboxControls: $('#sandbox-controls'),
       turnDot: $('#turn-dot'),
+      resetProgressBtn: $('#btn-reset-progress'),
     };
 
     buildLessonList();
@@ -84,8 +151,11 @@
       render();
     });
 
-    els.hintBtn.addEventListener('click', toggleHint);
-    els.resetBtn.addEventListener('click', () => loadLesson(state.lessonIndex));
+    els.hintBtn.addEventListener('click', showNextHint);
+    els.resetBtn.addEventListener('click', () => {
+      if (state.mode === 'sandbox') startSandbox();
+      else loadLesson(state.lessonIndex);
+    });
     els.prevBtn.addEventListener('click', () => {
       if (state.lessonIndex > 0) { exitSandbox(); loadLesson(state.lessonIndex - 1); }
     });
@@ -96,10 +166,34 @@
     els.undoBtn.addEventListener('click', onUndo);
     els.sandboxBtn.addEventListener('click', toggleSandbox);
     els.sizeSel.addEventListener('change', () => { if (state.mode === 'sandbox') startSandbox(); });
-    els.aiToggle.addEventListener('change', () => { state.sandboxVsAI = els.aiToggle.checked; });
+    els.aiToggle.addEventListener('change', () => {
+      state.sandboxVsAI = els.aiToggle.checked;
+      // 中途打开 AI 且轮到 AI 行棋时，立刻接管
+      if (state.sandboxVsAI && state.mode === 'sandbox' &&
+          state.board.turn !== state.humanColor && !state.busy) {
+        scheduleAI(state.board.turn);
+      }
+    });
+    if (els.soundBtn) {
+      els.soundBtn.textContent = soundOn ? '🔊' : '🔇';
+      els.soundBtn.addEventListener('click', () => {
+        soundOn = !soundOn;
+        els.soundBtn.textContent = soundOn ? '🔊' : '🔇';
+        try { localStorage.setItem('go_sound', soundOn ? 'on' : 'off'); } catch (e) { /* ignore */ }
+      });
+    }
+    if (els.resetProgressBtn) {
+      els.resetProgressBtn.addEventListener('click', () => {
+        if (!global.confirm('确定要清除全部学习进度吗？')) return;
+        state.completed = {};
+        saveProgress();
+        buildLessonList();
+        refreshLessonList();
+      });
+    }
 
     loadLesson(0);
-    window.addEventListener('resize', render);
+    global.addEventListener('resize', () => { resizeCanvas(); render(); });
   }
 
   /* ---------------- 课程列表 ---------------- */
@@ -135,11 +229,16 @@
       if (state.completed[les.id]) {
         dot.classList.add('done');
         dot.textContent = '✓';
+      } else {
+        dot.classList.remove('done');
+        dot.textContent = i + 1;
       }
     });
   }
 
   /* ---------------- 加载关卡 ---------------- */
+  let hintIdx = 0;
+
   function loadLesson(index) {
     state.mode = 'lesson';
     state.lessonIndex = index;
@@ -149,11 +248,18 @@
     for (const [x, y] of les.setup.black) state.board.set(x, y, BLACK);
     for (const [x, y] of les.setup.white) state.board.set(x, y, WHITE);
     state.board.turn = BLACK;
+    state.board.markSetup();
     state.placedThisLesson = 0;
-    state.ladderStep = 0;
     state.consecutivePasses = 0;
     state.busy = false;
+    state.lessonDone = false;
     state.hoverPt = null;
+    state.answerPt = null;
+    hintIdx = 0;
+
+    // 征子关：用引擎实时求解推荐点
+    state.ladderHint =
+      les.goal.type === 'ladder' ? AI.ladderMove(state.board, les.goal.target) : null;
 
     els.chapter.textContent = les.chapter;
     els.title.textContent = (index + 1) + '. ' + les.title;
@@ -196,10 +302,13 @@
     els.sandboxBtn.classList.add('active');
     const size = +els.sizeSel.value;
     state.board = new GoBoard(size);
+    state.board.markSetup();
     state.consecutivePasses = 0;
     state.busy = false;
     state.humanColor = BLACK;
     state.sandboxVsAI = els.aiToggle.checked;
+    state.answerPt = null;
+    state.ladderHint = null;
 
     els.chapter.textContent = '自由模式';
     els.title.textContent = '沙盘 / 自由对弈（' + size + ' 路）';
@@ -219,29 +328,38 @@
     render();
   }
 
-  /* ---------------- 画布尺寸 ---------------- */
+  /* ---------------- 画布尺寸（高清 + 自适应） ---------------- */
   function resizeCanvas() {
     const n = state.board.size;
-    const px = MARGIN * 2 + CELL * (n - 1);
-    canvas.width = px;
-    canvas.height = px;
-    // 自适应缩放（CSS 控制显示大小）
-    const maxDisp = Math.min(620, window.innerWidth - 380);
-    const disp = Math.max(300, maxDisp);
+    const logical = R.canvasSize(n);
+    state.logicalSize = logical;
+
+    // 显示尺寸：桌面三栏布局留出侧栏空间；窄屏用接近全宽
+    let disp;
+    if (global.innerWidth > 1080) {
+      disp = Math.min(620, Math.max(320, global.innerWidth - 720));
+    } else {
+      disp = Math.min(620, global.innerWidth - 44);
+    }
+    disp = Math.max(260, disp);
+
+    // 物理分辨率按 devicePixelRatio 放大，避免高分屏发虚
+    const dpr = global.devicePixelRatio || 1;
+    canvas.width = Math.round(disp * dpr);
+    canvas.height = Math.round(disp * dpr);
     canvas.style.width = disp + 'px';
     canvas.style.height = disp + 'px';
+    const s = canvas.width / logical;
+    ctx.setTransform(s, 0, 0, s, 0, 0);
   }
 
-  function boardToPixel(x, y) {
-    return [MARGIN + x * CELL, MARGIN + y * CELL];
-  }
   function pixelToBoard(px, py) {
-    const x = Math.round((px - MARGIN) / CELL);
-    const y = Math.round((py - MARGIN) / CELL);
+    const x = Math.round((px - R.MARGIN) / R.CELL);
+    const y = Math.round((py - R.MARGIN) / R.CELL);
     if (!state.board.inBounds(x, y)) return null;
     // 命中容差
-    const [cx, cy] = boardToPixel(x, y);
-    if (Math.hypot(px - cx, py - cy) > CELL * 0.5) return null;
+    const [cx, cy] = R.boardToPixel(x, y);
+    if (Math.hypot(px - cx, py - cy) > R.CELL * 0.5) return null;
     return [x, y];
   }
 
@@ -251,12 +369,10 @@
     const les = state.lesson;
     const opts = {};
 
-    // 教学高亮：气 / 征子推荐点
-    if (state.mode === 'lesson' && les && les.options) {
-      if (les.options.showLiberties) opts.showLiberties = les.options.showLiberties;
-      if (les.goal.type === 'ladder' && les.goal.recommend) {
-        opts.ladderRecommend = les.goal.recommend[state.ladderStep];
-      }
+    if (state.mode === 'lesson' && les) {
+      if (les.options && les.options.showLiberties) opts.showLiberties = les.options.showLiberties;
+      if (les.goal.type === 'ladder') opts.ladderRecommend = state.ladderHint;
+      if (state.answerPt) opts.answerPoint = state.answerPt;
     }
 
     // 落子预览
@@ -267,13 +383,12 @@
       }
     }
 
-    global.GoRender.draw(ctx, b, opts);
+    R.draw(ctx, b, opts);
     updateTurnDot();
   }
 
   function updateTurnDot() {
     if (!els.turnDot) return;
-    const color = currentHumanColor();
     els.turnDot.className = 'turn-dot ' + (state.board.turn === BLACK ? 'black' : 'white');
   }
 
@@ -289,10 +404,7 @@
       if (state.sandboxVsAI && state.board.turn !== state.humanColor) return false;
       return true;
     }
-    // 教学：完成的关卡不再接受落子（除自由对弈外）
-    if (state.lesson.goal.type !== 'freePlay' && state.completed[state.lesson.id] && state.lessonDone) {
-      return false;
-    }
+    if (state.lesson.goal.type !== 'freePlay' && state.lessonDone) return false;
     return true;
   }
 
@@ -305,10 +417,9 @@
 
   function eventToBoard(e) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
+    const scale = state.logicalSize / rect.width;
+    const px = (e.clientX - rect.left) * scale;
+    const py = (e.clientY - rect.top) * scale;
     return pixelToBoard(px, py);
   }
 
@@ -326,12 +437,12 @@
     }
 
     if (state.mode === 'sandbox') {
-      b.play(pt[0], pt[1], color);
+      playWithFx(pt[0], pt[1], color);
       state.consecutivePasses = 0;
       render();
       updateScore();
       if (state.sandboxVsAI && b.turn !== state.humanColor) {
-        scheduleAI(state.humanColor === BLACK ? WHITE : BLACK);
+        scheduleAI(b.turn);
       }
       return;
     }
@@ -340,11 +451,11 @@
   }
 
   function flashIllegal(pt) {
-    const [px, py] = boardToPixel(pt[0], pt[1]);
+    const [px, py] = R.boardToPixel(pt[0], pt[1]);
     ctx.strokeStyle = 'rgba(220,40,40,0.9)';
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(px, py, CELL * 0.4, 0, Math.PI * 2); ctx.stroke();
-    let reason = state.board.testMove(pt[0], pt[1], currentHumanColor()).reason || '此处不可下';
+    ctx.beginPath(); ctx.arc(px, py, R.CELL * 0.4, 0, Math.PI * 2); ctx.stroke();
+    const reason = state.board.testMove(pt[0], pt[1], currentHumanColor()).reason || '此处不可下';
     setStatus(reason, 'warn');
     setTimeout(render, 350);
   }
@@ -360,7 +471,15 @@
       return handleLadderMove(pt);
     }
 
-    const res = b.play(pt[0], pt[1], color);
+    // 找要害类题目：下错点直接驳回，保持盘面干净
+    if (goal.type === 'placeAt' &&
+        !goal.points.some((p) => p[0] === pt[0] && p[1] === pt[1])) {
+      flashIllegal(pt);
+      setStatus('这一点不是要害，再想想。可点 💡提示。', 'warn');
+      return;
+    }
+
+    const res = playWithFx(pt[0], pt[1], color);
     if (!res) { flashIllegal(pt); return; }
     state.placedThisLesson++;
     state.consecutivePasses = 0;
@@ -372,7 +491,6 @@
       return;
     }
 
-    // 非自由关卡：若设置了对手应手则让其回应（多数教学关 noOpponent）
     render();
 
     if (checkGoal()) {
@@ -395,48 +513,46 @@
     const target = les.goal.target;
 
     if (!b.isLegal(pt[0], pt[1], BLACK)) { flashIllegal(pt); return; }
-    b.play(pt[0], pt[1], BLACK);
+    playWithFx(pt[0], pt[1], BLACK);
     render();
 
-    // 目标是否已被提
     if (!targetAlive(target)) { onLessonSuccess(); return; }
 
-    // 找到被追白块的代表坐标
-    const ws = findChasedWhite(target);
-    if (!ws) { onLessonSuccess(); return; }
-
-    const libs = b.countLiberties(ws[0], ws[1]);
+    const libs = b.countLiberties(target[0], target[1]);
     if (libs >= 3) {
-      setStatus('白棋逃出了（气≥3）。征子失败，点击“重来”再试一次。', 'warn');
-      state.busy = true;
+      ladderFailed();
       return;
     }
     if (libs === 1) {
-      // 白棋被打吃 → 自动逃跑（escapeOnly）
+      // 白棋被打吃 → 自动逃跑
       state.busy = true;
       setTimeout(() => {
         const mv = AI.chooseMove(b, WHITE, { escapeOnly: true });
-        if (mv.pass || !b.play(mv.x, mv.y, WHITE)) {
-          // 无法逃 → 玩家下一手即可提，保持现状
-        }
-        state.ladderStep = Math.min(state.ladderStep + 1, (les.goal.recommend || []).length - 1);
+        if (!mv.pass) playWithFx(mv.x, mv.y, WHITE);
         state.busy = false;
+        if (!targetAlive(target)) { render(); onLessonSuccess(); return; }
+        // 白逃跑后重新求解：解不出来即征子已失败
+        state.ladderHint = AI.ladderMove(b, target);
+        if (b.countLiberties(target[0], target[1]) >= 3 || !state.ladderHint) {
+          ladderFailed();
+          return;
+        }
         render();
-        if (!targetAlive(target)) onLessonSuccess();
       }, 320);
     } else {
-      // 玩家这手没有形成打吃
+      // 玩家这手没有形成打吃；提示并刷新推荐
+      state.ladderHint = AI.ladderMove(b, target);
+      if (!state.ladderHint) { ladderFailed(); return; }
       setStatus('这一手没有打吃到白棋。请打在让白棋只剩一口气的点上（见红圈提示）。', 'warn');
+      render();
     }
   }
 
-  function findChasedWhite(target) {
-    const b = state.board;
-    if (b.get(target[0], target[1]) === WHITE) {
-      const g = b.group(target[0], target[1]);
-      return g.stones[0];
-    }
-    return null;
+  function ladderFailed() {
+    state.ladderHint = null;
+    state.busy = true;
+    setStatus('白棋逃出去了，征子失败。点击“重来本题”再试一次。', 'warn');
+    render();
   }
 
   function targetAlive(target) {
@@ -481,7 +597,6 @@
   function countGroupEyes(x, y) {
     const b = state.board;
     if (b.get(x, y) === EMPTY) return 0;
-    const color = b.get(x, y);
     const g = b.group(x, y);
     const stoneSet = new Set(g.stones.map((s) => s[0] + ',' + s[1]));
     let eyes = 0;
@@ -493,28 +608,33 @@
         if (checked.has(key)) continue;
         checked.add(key);
         // 该空点四周必须全部属于本棋块
-        const surround = b.neighbors(nx, ny);
-        const ok = surround.every(([ax, ay]) => stoneSet.has(ax + ',' + ay));
+        const ok = b.neighbors(nx, ny).every(([ax, ay]) => stoneSet.has(ax + ',' + ay));
         if (ok) eyes++;
       }
     }
     return eyes;
   }
 
-  /* ---------------- 成功 / 失败 ---------------- */
+  /* ---------------- 成功 ---------------- */
   function onLessonSuccess() {
     const les = state.lesson;
     state.lessonDone = true;
     state.busy = true;
+    state.answerPt = null;
     if (!state.completed[les.id]) {
       state.completed[les.id] = true;
       saveProgress();
       refreshLessonList();
     }
-    setStatus('✅ ' + (les.success || '完成！'), 'success');
+
+    const allDone = LESSONS.every((l) => state.completed[l.id]);
+    if (allDone && state.lessonIndex === LESSONS.length - 1) {
+      setStatus('🎉 恭喜你完成了全部课程！你已经掌握围棋的基本功，去“自由对弈”里大展身手吧！', 'success');
+    } else {
+      setStatus('✅ ' + (les.success || '完成！'), 'success');
+    }
     render();
 
-    // 自动提示进入下一关
     if (state.lessonIndex < LESSONS.length - 1) {
       els.nextBtn.classList.add('pulse');
       setTimeout(() => els.nextBtn.classList.remove('pulse'), 2400);
@@ -538,7 +658,7 @@
         state.board.pass(color);
         state.consecutivePasses++;
       } else {
-        state.board.play(mv.x, mv.y, color);
+        playWithFx(mv.x, mv.y, color);
         state.consecutivePasses = 0;
       }
       state.busy = false;
@@ -614,23 +734,25 @@
   }
 
   /* ---------------- 提示 / 状态栏 ---------------- */
-  let hintIdx = 0;
-  function toggleHint() {
+  function showNextHint() {
     const les = state.lesson;
-    if (!les.hints || !les.hints.length) return;
+    if (!les || !les.hints || !les.hints.length) return;
+    const idx = Math.min(hintIdx, les.hints.length - 1);
     els.hintBox.classList.remove('hidden');
-    els.hintBox.innerHTML = '💡 ' + les.hints[hintIdx % les.hints.length];
-    hintIdx++;
+    els.hintBox.innerHTML = '💡 ' + les.hints[idx] +
+      (idx < les.hints.length - 1 ? '<span class="hint-more">（再点一次有更具体的提示）</span>' : '');
+    // 看到最后一条提示时，在棋盘上用蓝圈标出答案点
+    if (idx === les.hints.length - 1 && les.answer) {
+      state.answerPt = les.answer;
+      render();
+    }
+    hintIdx = Math.min(hintIdx + 1, les.hints.length - 1);
   }
 
   function setStatus(msg, cls) {
     els.status.className = 'panel-status ' + (cls || '');
     els.status.innerHTML = msg;
   }
-
-  // 切换关卡时重置提示指针
-  const _origLoad = loadLesson;
-  loadLesson = function (i) { hintIdx = 0; state.lessonDone = false; _origLoad(i); };
 
   global.addEventListener('DOMContentLoaded', init);
 })(typeof window !== 'undefined' ? window : globalThis);

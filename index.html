@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="从零开始的系统性围棋教学网页游戏：完整规则引擎、闯关式课程、AI 对弈" />
+  <meta name="theme-color" content="#5a4226" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚫</text></svg>" />
   <title>围棋教室 · 系统性围棋教学</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -21,6 +24,7 @@
     <aside class="sidebar">
       <h2 class="sidebar-title">课程目录</h2>
       <div id="lesson-list" class="lesson-list"></div>
+      <button id="btn-reset-progress" class="btn small ghost sidebar-reset">清除学习进度</button>
     </aside>
 
     <!-- 中间：棋盘 -->
@@ -32,6 +36,7 @@
         <span class="turn-label">当前行棋：</span>
         <span id="turn-dot" class="turn-dot black"></span>
         <div class="spacer"></div>
+        <button id="btn-sound" class="btn small" title="音效开关">🔊</button>
         <button id="btn-pass" class="btn small hidden">停一手</button>
         <button id="btn-undo" class="btn small hidden">悔棋</button>
         <button id="btn-reset" class="btn small">重来本题</button>

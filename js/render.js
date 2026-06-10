@@ -124,6 +124,12 @@
       if (board.get(rx, ry) === EMPTY) markPoint(ctx, rx, ry, 'rgba(220,70,70,0.85)');
     }
 
+    // 提示答案点（点提示到最后一条时显示）
+    if (opts.answerPoint) {
+      const [ax, ay] = opts.answerPoint;
+      if (board.get(ax, ay) === EMPTY) markPoint(ctx, ax, ay, 'rgba(40,110,220,0.9)');
+    }
+
     // 棋子
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
@@ -150,5 +156,5 @@
     }
   }
 
-  global.GoRender = { draw, boardToPixel, canvasSize, starPoints, CELL, MARGIN };
+  global.GoRender = { draw, drawStoneAt, boardToPixel, canvasSize, starPoints, CELL, MARGIN };
 })(typeof window !== 'undefined' ? window : globalThis);

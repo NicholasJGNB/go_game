@@ -184,11 +184,21 @@
       this.turn = opposite(color);
     }
 
+    /* 记录当前盘面为"初始布局"，undo 重放时以此为基线（否则预设棋子会被清掉） */
+    markSetup() {
+      this.baseGrid = this.grid.map((row) => row.slice());
+    }
+
     undo() {
       if (!this.history.length) return false;
-      // 简单做法：重放除最后一手以外的全部历史
+      // 简单做法：回到初始布局后，重放除最后一手以外的全部历史
       const hist = this.history.slice(0, -1);
+      const base = this.baseGrid;
       this.reset();
+      if (base) {
+        this.baseGrid = base;
+        this.grid = base.map((row) => row.slice());
+      }
       for (const h of hist) {
         if (h.pass) this.pass(h.color);
         else this.play(h.x, h.y, h.color);
@@ -274,6 +284,7 @@
     clone() {
       const b = new GoBoard(this.size);
       b.grid = this.grid.map((row) => row.slice());
+      b.baseGrid = this.baseGrid ? this.baseGrid.map((row) => row.slice()) : null;
       b.turn = this.turn;
       b.captures = { [BLACK]: this.captures[BLACK], [WHITE]: this.captures[WHITE] };
       b.koPoint = this.koPoint ? this.koPoint.slice() : null;
